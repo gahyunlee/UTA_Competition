@@ -1,0 +1,143 @@
+---
+title: "NB UTA Pier 1"
+output: html_document
+editor_options: 
+hunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+__Load required packages:__
+```{r loadpackages, message=FALSE}
+library(e1071)
+library(caret)
+library(tidyverse)
+library(gains)
+```
+
+__Load the data set:__
+```{r loaddata}
+setwd("C:/Users/esnxwng/Desktop/UTA Pier 1")
+
+pier1.df <- read.csv("nb_data.csv")
+
+  # Convert DAY_WEEK variable to categorical
+
+pier1.df <- pier1.df[,-c(1)]
+
+str(pier1.df)
+
+table(pier1.df$FinishName)
+pier1.df$FinishName <- as.character(pier1.df$FinishName)
+
+for (row in 1:nrow(pier1.df)) {
+  if (pier1.df[row, 'FinishName'] != 'None') {
+    pier1.df[row, 'FinishName'] <- 'Finish'
+  }
+}
+
+pier1.df$FinishName <- as.factor(pier1.df$FinishName)
+
+table(pier1.df$Color)
+
+pier1.df$Color <- as.character(pier1.df$Color)
+pier1.df$Color <- sapply(strsplit(as.character(pier1.df$Color), " - "), "[", 1)
+
+for (row in 1:nrow(pier1.df)) {
+  if (pier1.df[row, 'Color'] != 'Blue' && pier1.df[row, 'Color'] != 'Brown' && pier1.df[row, 'Color'] != 'Gold' && pier1.df[row, 'Color'] != 'Gray' && pier1.df[row, 'Color'] != 'Green' && pier1.df[row, 'Color'] != 'Ivory' && pier1.df[row, 'Color'] != 'Multi' && pier1.df[row, 'Color'] != 'Natural' && pier1.df[row, 'Color'] != 'Red' && pier1.df[row, 'Color'] != 'Silver' && pier1.df[row, 'Color'] != 'White') {
+    pier1.df[row, 'Color'] <- 'Others'
+  }
+}
+
+pier1.df$Color <- as.factor(pier1.df$Color)
+
+pier1.df$Material <- as.character(pier1.df$Material)
+pier1.df$Material <- sapply(strsplit(as.character(pier1.df$Material), " - "), "[", 1)
+pier1.df$Material <- sapply(strsplit(as.character(pier1.df$Material), " -"), "[", 1)
+
+for (row in 1:nrow(pier1.df)) {
+  if (pier1.df[row, 'Material'] != 'CERAMIC' && pier1.df[row, 'Material'] != 'FABRIC' && pier1.df[row, 'Material'] != 'GLASS' && pier1.df[row, 'Material'] != 'METAL' && pier1.df[row, 'Material'] != 'WOOD' && pier1.df[row, 'Material'] != 'None') {
+    pier1.df[row, 'Material'] <- 'Others'
+  }
+}
+
+pier1.df$Material <- as.factor(pier1.df$Material)
+
+pier1.df$Season <- as.character(pier1.df$Season)
+
+for (row in 1:nrow(pier1.df)) {
+  if (pier1.df[row, 'Season'] != 'None') {
+    pier1.df[row, 'Season'] <- 'Season'
+  }
+}
+
+pier1.df$Season <- as.factor(pier1.df$Season)
+
+pier1.df$CountryOfOrigin <- as.character(pier1.df$CountryOfOrigin)
+pier1.df$CountryOfOrigin <- sapply(strsplit(as.character(pier1.df$CountryOfOrigin), ","), "[", 1)
+
+for (row in 1:nrow(pier1.df)) {
+  if (pier1.df[row, 'CountryOfOrigin'] != 'China' && pier1.df[row, 'CountryOfOrigin'] != 'India') {
+    pier1.df[row, 'CountryOfOrigin'] <- 'Others'
+  }
+}
+
+pier1.df$CountryOfOrigin <- as.factor(pier1.df$CountryOfOrigin)
+
+pier1.df$Quartile <- as.factor(pier1.df$Quartile)
+pier1.df$size_std_cluster <- as.factor(pier1.df$size_std_cluster)
+pier1.df$man_cluster <- as.factor(pier1.df$man_cluster)
+```
+
+__Partition the dataset:__
+```{r partition}
+set.seed(777)
+train.index <- createDataPartition(pier1.df$Quartile, p=0.8, list=FALSE)
+train.df <- pier1.df[train.index,]
+test.df <- pier1.df[-train.index,]
+
+```
+
+
+__Run Naive Bayes:__
+```{r naivebayes}
+pier1.nb <- naiveBayes(Quartile ~ ., data = pier1.df)
+pier1.nb
+```
+  
+__Generate predictions:__
+```{r predictions}
+  # probabilities
+pred.prob <- predict(pier1.nb, test.df, type = 'raw')
+
+  # class membership
+pred.class <- predict(pier1.nb, test.df)
+
+  # Data frame with actual and predicted values
+df <- data.frame(test.df$Quartile, pred.class, pred.prob)
+
+```
+
+__Performace Evaluation:__
+```{r perfEval, echo=FALSE}
+  # Confusion Matrices _ test data
+confusionMatrix(pred.class, test.df$Quartile)
+
+#Sensitivity is how good the model is at predicting the class of interest
+#Specificity is how good the model is at ruling out the class of no interest
+
+  ### Lift Chart
+gain <- gains(ifelse(test.df$Quartile=="delayed",1,0), pred.prob[,1], groups=100)
+
+plot(c(0,gain$cume.pct.of.total*sum(test.df$Flight.Status=="delayed"))~c(0,gain$cume.obs), 
+     xlab="# cases", ylab="Cumulative", main="Lift Chart", type="l", col = "firebrick2")
+lines(c(0,sum(test.df$Flight.Status=="delayed"))~c(0, dim(test.df)[1]), lty=2, col = "blue")
+
+#blue line is the naives baseline - it is the average of randomness
+
+```
+
